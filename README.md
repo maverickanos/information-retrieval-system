@@ -1,118 +1,115 @@
-# Hybrid Information Retrieval System
 
-## 1. Overview
+# Hybrid Information Retrieval
 
-The Hybrid Information Retrieval System is an academic project that combines lexical, statistical, and semantic retrieval methods. It preprocesses a JSON document collection, builds three complementary indexes, combines their rankings with Reciprocal Rank Fusion (RRF), and exposes the resulting search service through a FastAPI backend and a plain HTML/CSS/JavaScript web interface.
+A document search system that combines lexical matching, statistical term similarity, and semantic retrieval to produce a unified ranking of relevant documents. The system indexes a local JSON corpus, retrieves results using BM25, TF-IDF, and Sentence Transformers, and combines the rankings through Reciprocal Rank Fusion (RRF). Search and evaluation are exposed through a FastAPI backend and a browser-based interface.
 
-## 2. Problem Statement
+## Overview
 
-Individual information-retrieval methods have different strengths. Exact term matching can miss documents that express the same idea with different words, while semantic matching can overlook important exact terms. The project addresses this problem by combining lexical matching, TF-IDF similarity, and semantic embedding search into one ranked result set.
+Traditional keyword-based search can miss relevant documents when they use different wording from a query, while semantic retrieval can overlook exact terminology. This project combines complementary retrieval strategies to improve document discovery by considering both term-level and semantic relevance.
 
-## 3. Objectives
+The system provides document indexing, hybrid retrieval, ranking fusion, evaluation metrics, an HTTP API, and a web interface for interactive searches.
 
-- Preprocess documents and queries consistently using NLTK.
-- Retrieve documents using BM25Okapi, TF-IDF cosine similarity, and semantic embeddings.
-- Use FAISS for efficient inner-product search over normalized embeddings.
-- Fuse the three ranked lists using Reciprocal Rank Fusion.
-- Provide an HTTP API and browser-based interface for indexing, searching, health checks, and evaluation.
-- Measure retrieval quality using Precision@K, Recall@K, and Mean Reciprocal Rank.
-- Support repeatable local and Docker-based execution.
+## Features
 
-## 4. Key Features
+- Text preprocessing with NLTK, including tokenization, lowercasing, punctuation removal, stop-word filtering, and lemmatization.
+- BM25Okapi for lexical retrieval.
+- TF-IDF vectorization and cosine similarity for statistical term matching.
+- Sentence Transformer embeddings using `all-MiniLM-L6-v2`.
+- FAISS inner-product search over normalized 384-dimensional embeddings.
+- Reciprocal Rank Fusion (RRF) to combine rankings from multiple retrieval methods.
+- Search results containing document details, snippets, retrieval scores, individual ranks, and final ranking.
+- FastAPI endpoints for indexing, searching, health checks, and evaluation.
+- Browser interface built with HTML, CSS, and JavaScript.
+- Retrieval evaluation using Precision@K, Recall@K, and Mean Reciprocal Rank (MRR).
+- Automated tests using pytest.
+- Docker-based application execution.
 
-- NLTK tokenization, lowercasing, punctuation removal, stop-word filtering, and lemmatization.
-- BM25Okapi lexical retrieval.
-- TF-IDF vectorization with cosine similarity.
-- Sentence Transformer semantic embeddings using `all-MiniLM-L6-v2`.
-- FAISS inner-product search over normalized 384-dimensional vectors.
-- Reciprocal Rank Fusion with `k = 60`.
-- Search results containing document information, a content snippet, method scores, method ranks, RRF score, and final rank.
-- JSON document corpus and JSON ground-truth evaluation data.
-- FastAPI backend, browser frontend, automated pytest tests, and Docker support.
-
-## 5. System Architecture
+## System Architecture
 
 ```text
-User Query
-    |
-    v
-Text Preprocessing
-    |
-    +----------------+------------------+
-    |                |                  |
-    v                v                  v
-  BM25             TF-IDF        Sentence Transformer
-    |                |                  |
-    |                |                  v
-    |                |                FAISS
-    |                |                  |
-    +----------------+------------------+
-                     |
-                     v
-          Reciprocal Rank Fusion
-                     |
-                     v
-             Final Ranked Results
-                     |
-                     v
-                API / Web UI
+                         Search Query
+                              |
+                              v
+                       Text Preprocessing
+                              |
+              +---------------+---------------+
+              |               |               |
+              v               v               v
+           BM25            TF-IDF       Sentence Transformer
+              |               |               |
+              |               |               v
+              |               |              FAISS
+              +---------------+---------------+
+                              |
+                              v
+                   Reciprocal Rank Fusion
+                              |
+                              v
+                    Unified Ranked Results
+                              |
+                              v
+                       FastAPI / Web UI
 ```
 
-The FastAPI application invokes the indexer when `/index` is called. The `SearchEngine.search()` method then runs all three retrieval methods for each query and combines their rankings before returning the final results.
+The indexing pipeline preprocesses the document collection and builds the retrieval indexes. For each search request, the system independently ranks documents using BM25, TF-IDF, and semantic similarity. Reciprocal Rank Fusion then combines the rankings into a single ordered result list.
 
-## 6. How the Hybrid Retrieval Works
+## Retrieval Pipeline
 
-### Text preprocessing
+### 1. BM25 Retrieval
 
-Documents and queries are normalized with NLTK. The preprocessing pipeline lowercases text, removes punctuation, tokenizes it, removes English stop words, and lemmatizes the remaining alphabetic tokens. Required NLTK resources are downloaded when they are not already available.
+BM25Okapi ranks documents using term frequency, inverse document frequency, and document-length normalization. It is particularly useful when query terms appear explicitly in relevant documents.
 
-### BM25
+### 2. TF-IDF Retrieval
 
-BM25Okapi provides lexical retrieval based on term frequency, inverse document frequency, and document-length normalization. It is useful when query terms occur explicitly in a document.
+The document collection is represented using TF-IDF vectors. Each processed query is compared with the document matrix using cosine similarity, generating a ranking based on statistical term similarity.
 
-### TF-IDF
+### 3. Semantic Search with Sentence Transformers and FAISS
 
-The system creates a TF-IDF representation of the preprocessed documents and compares a preprocessed query with the document matrix using cosine similarity. This provides a statistical term-similarity ranking that complements BM25.
+The `all-MiniLM-L6-v2` model encodes documents and queries into 384-dimensional embeddings. The vectors are L2-normalized and stored in a FAISS inner-product index.
 
-### Sentence Transformer + FAISS
+For normalized vectors, inner-product search provides a measure of semantic similarity between a query and indexed documents.
 
-The `all-MiniLM-L6-v2` Sentence Transformer generates a 384-dimensional embedding for each processed document and query. The vectors are L2-normalized and stored in a FAISS inner-product index. With normalized vectors, the inner product represents semantic similarity between the query and documents.
+### 4. Reciprocal Rank Fusion
 
-### Reciprocal Rank Fusion
-
-BM25, TF-IDF, and semantic search each produce a ranked list. RRF combines those ranks using:
+Each retrieval method generates its own ranked list. Reciprocal Rank Fusion combines the document positions across these lists using:
 
 ```text
-RRF score(document) = sum(1 / (k + rank))
+RRF(document) = sum(1 / (k + rank))
 ```
 
-The configured value is `k = 60`. The RRF score is a ranking score, not a percentage. The fused results are sorted by RRF score and assigned a final rank.
+The implementation uses `k = 60`. The RRF score is a ranking score rather than a percentage. Documents are sorted by their fused scores to generate the final ranking.
 
-A hybrid approach is useful because BM25 handles lexical matching, TF-IDF provides statistical term similarity, semantic search handles meaning and context, and RRF combines their rankings.
+This approach combines lexical matching, statistical term similarity, and semantic retrieval without requiring the individual retrieval scores to share the same scale.
 
-## 7. Technology Stack
+## Technology Stack
 
-| Area | Technology |
-| --- | --- |
-| Language | Python 3.10 or newer; Python 3.11 recommended |
-| Text preprocessing | NLTK |
-| Lexical retrieval | `rank-bm25` with BM25Okapi |
-| Statistical retrieval | scikit-learn TF-IDF and cosine similarity |
-| Semantic retrieval | Sentence Transformers, `all-MiniLM-L6-v2` |
-| Vector search | FAISS with normalized inner-product search |
+| Component | Technology |
+|---|---|
+| Programming Language | Python 3.10+ |
+| Text Processing | NLTK |
+| Lexical Retrieval | rank-bm25 / BM25Okapi |
+| Statistical Retrieval | scikit-learn TF-IDF and cosine similarity |
+| Semantic Embeddings | Sentence Transformers |
+| Vector Search | FAISS |
 | Backend API | FastAPI and Uvicorn |
-| Frontend | Plain HTML, CSS, and JavaScript |
-| Evaluation and testing | Python evaluation module and pytest |
+| Frontend | HTML, CSS, JavaScript |
+| Evaluation and Testing | Python, pytest |
 | Containerization | Docker |
-| Stored data | JSON documents and ground truth |
+| Data Storage | JSON |
 
-## 8. Dataset
+## Dataset and Evaluation
 
-The project uses a local JSON corpus stored in `data/documents.json`. Each document contains an identifier, title, and content. Retrieval evaluation queries and their relevant document identifiers are stored in `data/ground_truth.json`.
+The system loads documents from `data/documents.json`. Each document contains an identifier, title, and content. Evaluation queries and their relevant document identifiers are stored in `data/ground_truth.json`.
 
-The system is therefore intended for experimentation on this local corpus. Retrieval quality depends on the coverage, correctness, and relevance labels in those files.
+Retrieval quality is evaluated using the following metrics:
 
-## 9. Project Structure
+- **Precision@K:** Measures the proportion of the top K retrieved documents that are relevant.
+- **Recall@K:** Measures the proportion of all known relevant documents retrieved within the top K results.
+- **Mean Reciprocal Rank (MRR):** Measures the average reciprocal rank of the first relevant result across evaluation queries.
+
+Evaluation results depend on the document corpus and the quality of the relevance labels.
+
+## Project Structure
 
 ```text
 .
@@ -126,7 +123,7 @@ The system is therefore intended for experimentation on this local corpus. Retri
 ├── README.md
 ├── requirements.txt
 ├── search_engine.py
-├── artifacts/                 # Generated index and model artifacts
+├── artifacts/
 │   ├── bm25.pkl
 │   ├── faiss.index
 │   ├── metadata.json
@@ -146,11 +143,13 @@ The system is therefore intended for experimentation on this local corpus. Retri
     └── test_search_engine.py
 ```
 
-The files under `artifacts/` are generated by indexing and can be rebuilt when the corpus changes. They are not source code.
+The files in `artifacts/` are generated during indexing and can be rebuilt when the document corpus changes.
 
-## 10. Installation
+## Installation
 
-Use Python 3.10 or newer. Python 3.11 is recommended for the current dependency set.
+Python 3.11 is recommended.
+
+Create and activate a virtual environment, then install the dependencies:
 
 ```powershell
 python -m venv .venv
@@ -158,79 +157,43 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
-The first indexing operation may download the `all-MiniLM-L6-v2` Sentence Transformer model and the required NLTK resources. Network access is required for those downloads unless the resources and model are already available locally.
+The first indexing operation may download the Sentence Transformer model and required NLTK resources. Network access is required unless these resources are already available locally.
 
-## 11. Running the Application
+## Running the Application
 
-Start the development server with:
+Start the FastAPI development server:
 
-```powershell
+```bash
 python -m uvicorn api:app --reload
 ```
 
-Open [http://127.0.0.1:8000](http://127.0.0.1:8000) in a browser. Use **Rebuild index** in the web interface before searching if the generated artifacts are missing or the corpus has changed.
+Open the application in your browser:
 
-### Teammate handoff: run and use the project
+[http://127.0.0.1:8000](http://127.0.0.1:8000)
 
-1. Open PowerShell in the project directory.
-2. Create and activate the virtual environment, then install the dependencies:
+Before the first search, or after modifying the corpus, select **Rebuild index** in the web interface. This preprocesses the documents and creates the BM25, TF-IDF, and FAISS artifacts.
 
-  ```powershell
-  python -m venv .venv
-  .\.venv\Scripts\Activate.ps1
-  pip install -r requirements.txt
-  ```
+### Performing a Search
 
-3. Start the backend:
+1. Start the application and open the browser interface.
+2. Rebuild the index if it does not exist or the corpus has changed.
+3. Enter a query, such as `machine learning algorithms`.
+4. Select the number of results to retrieve.
+5. Review the returned documents, snippets, individual retrieval scores, method ranks, RRF scores, and final ranking.
+6. Select **Evaluate** to measure retrieval performance against the labeled queries in `data/ground_truth.json`.
 
-  ```powershell
-  python -m uvicorn api:app --reload
-  ```
+The alternative entry point `python main.py` also starts Uvicorn using the host and port configured in `config.py`.
 
-  The application is available at `http://127.0.0.1:8000`. The alternative entry point `python main.py` also starts Uvicorn using the host and port in `config.py`.
-
-4. Open the URL in a browser. The frontend is served by FastAPI from `frontend/index.html`.
-5. Click **Rebuild index** before the first search, or after changing `data/documents.json`. This calls `POST /index`, preprocesses the documents, creates the BM25 and TF-IDF indexes, generates Sentence Transformer embeddings, normalizes them, and writes the generated files under `artifacts/`.
-6. Enter a query such as `machine learning algorithms` and choose the number of results. The frontend sends the query to `POST /search`.
-7. Review each result's document information, snippet, BM25 score and rank, TF-IDF score and rank, semantic score and rank, RRF score, and final rank.
-8. Click **Evaluate** to call `POST /evaluate`. The evaluation uses `data/ground_truth.json` and displays mean Precision@K, mean Recall@K, and MRR.
-
-### How one search works internally
-
-For every `/search` request, the backend:
-
-1. Validates the query and requested result count.
-2. Applies the same NLTK preprocessing used for the document corpus.
-3. Retrieves and ranks documents with BM25Okapi.
-4. Computes TF-IDF cosine-similarity scores and ranks the documents.
-5. Encodes the query with `all-MiniLM-L6-v2`, normalizes the embedding, and searches the FAISS inner-product index.
-6. Combines the three rankings with RRF using `k = 60`.
-7. Sorts the fused results, assigns the final rank, adds a short content snippet, and returns the response through FastAPI.
-
-### How to update the project
-
-- Update the document corpus in `data/documents.json` and rebuild the index.
-- Update relevance judgments in `data/ground_truth.json` before running evaluation.
-- Change model, port, RRF, or default result settings in `config.py`.
-- Change preprocessing behavior in `preprocess.py`.
-- Change index construction in `indexer.py`.
-- Change retrieval and fusion behavior in `search_engine.py`.
-- Change API validation or endpoints in `api.py`.
-- Change the browser interface in `frontend/index.html`, `frontend/script.js`, and `frontend/style.css`.
-- Run `pytest -q` after code changes.
-
-Generated files in `artifacts/` are disposable outputs. If they are missing or stale, use **Rebuild index** rather than editing them manually.
-
-## 12. API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Purpose |
-| --- | --- | --- |
-| `GET` | `/health` | Returns service health and whether the search engine is loaded. |
-| `POST` | `/index` | Builds BM25, TF-IDF, and FAISS artifacts from the JSON corpus. |
-| `POST` | `/search` | Runs the three retrieval methods and returns fused results. |
-| `POST` | `/evaluate` | Evaluates the search engine against the ground-truth file. |
+|---|---|---|
+| `GET` | `/health` | Reports service health and whether the search engine is loaded. |
+| `POST` | `/index` | Builds the BM25, TF-IDF, and FAISS artifacts from the JSON corpus. |
+| `POST` | `/search` | Executes the retrieval methods and returns the fused ranking. |
+| `POST` | `/evaluate` | Evaluates retrieval against the ground-truth file. |
 
-### `/search` request
+### Search Request
 
 ```json
 {
@@ -239,9 +202,9 @@ Generated files in `artifacts/` are disposable outputs. If they are missing or s
 }
 ```
 
-The `query` must be non-empty and `top_k` must be greater than zero.
+The query must be non-empty, and `top_k` must be greater than zero.
 
-### `/evaluate` request
+### Evaluation Request
 
 ```json
 {
@@ -251,82 +214,72 @@ The `query` must be non-empty and `top_k` must be greater than zero.
 
 The value of `k` must be greater than zero.
 
-## 13. Example Search
+## Configuration and Maintenance
 
-The implementation has been verified with the query `machine learning algorithms`. One observed top result was:
+- Add or edit documents in `data/documents.json`, then rebuild the index.
+- Update relevance judgments in `data/ground_truth.json` before evaluating changes.
+- Adjust the model, port, RRF, and default-result settings in `config.py`.
+- Modify text normalization in `preprocess.py`.
+- Update index construction in `indexer.py`.
+- Change retrieval or ranking-fusion logic in `search_engine.py`.
+- Modify API routes or request validation in `api.py`.
+- Update the browser interface in `frontend/index.html`, `frontend/script.js`, and `frontend/style.css`.
+- Run `pytest -q` after code changes.
 
-| Field | Observed value |
-| --- | --- |
-| Document | Document 2 - Machine Learning Algorithms |
-| BM25 rank | 1 |
-| TF-IDF rank | 1 |
-| Semantic rank | 1 |
-| RRF score | `0.04918032786885246` |
-| Final rank | 1 |
+Generated files in `artifacts/` should be rebuilt when stale rather than edited manually.
 
-Search results also include the BM25, TF-IDF, and semantic scores; their ranks; the RRF score; the final rank; the document identifier, title, content, and a short snippet.
+## Testing
 
-## 14. Evaluation
+Run the automated test suite:
 
-The `/evaluate` endpoint loads `data/ground_truth.json`, runs every ground-truth query through the search engine, and reports per-query and aggregate retrieval measures:
-
-- **Precision@K:** the proportion of the top `K` retrieved documents that are relevant.
-- **Recall@K:** the proportion of relevant documents retrieved in the top `K` results.
-- **Mean Reciprocal Rank (MRR):** the mean of the reciprocal rank of the first relevant result across evaluation queries.
-
-No aggregate evaluation scores are recorded in the repository documentation or source files, so no performance percentage is claimed here.
-
-## 15. Testing
-
-Run the automated tests with:
-
-```powershell
+```bash
 pytest -q
 ```
 
-The verified test result is:
+The documented test result is:
 
 ```text
 12 passed, 2 warnings
 ```
 
-The two warnings are dependency deprecation warnings; they are not test failures.
+The warnings were previously identified as dependency deprecation warnings rather than test failures. Test results may differ across dependency versions or code changes.
 
-## 16. Docker
+## Docker
 
-Build and run the application with:
+Build the Docker image:
 
-```powershell
+```bash
 docker build -t hybrid-ir .
+```
+
+Run the container:
+
+```bash
 docker run --rm -p 8000:8000 hybrid-ir
 ```
 
-The Docker image installs the Python dependencies and downloads the NLTK resources during the image build. The Sentence Transformer model is downloaded on the first `/index` request, so the container needs network access at that point unless an appropriate Hugging Face cache is supplied separately.
+The Docker image installs Python dependencies and downloads NLTK resources during the build. The Sentence Transformer model is downloaded during the first indexing request, so the container requires network access unless the model cache is supplied separately.
 
-## 17. Limitations
+## Limitations
 
-- The system uses a local JSON corpus rather than a production-scale document store.
-- Retrieval quality depends on the size and quality of the corpus and ground-truth labels.
-- The Sentence Transformer model and FAISS artifacts require local storage and computational resources.
-- Generated artifacts must be rebuilt when the corpus changes.
-- The first indexing operation can require model and NLTK downloads and therefore network access.
-- The project provides a development-oriented API and frontend; authentication, user management, and production deployment concerns are outside the current implementation.
+- Uses a local JSON corpus rather than a production-scale document store.
+- Retrieval quality depends on the corpus and the completeness of relevance labels.
+- The embedding model and FAISS index require local storage and computational resources.
+- Index artifacts must be rebuilt after corpus changes.
+- Initial setup or indexing may require network access to retrieve model and language resources.
+- Authentication, user management, and production deployment hardening are outside the current implementation.
 
-## 18. Future Enhancements
+## Future Improvements
 
-Possible future enhancements, not currently implemented, include:
+Potential extensions include:
 
-- Adding larger or domain-specific datasets and richer relevance judgments.
-- Supporting incremental indexing and document updates.
-- Adding configurable retrieval weights or fusion strategies.
-- Improving API authentication, validation, observability, and production deployment.
-- Adding richer frontend result filtering, pagination, and analytics.
-- Comparing additional embedding models and retrieval configurations through systematic experiments.
+- Incremental indexing and document updates.
+- Experiments with additional embedding models and retrieval configurations.
+- Larger document collections and improved relevance judgments.
+- Configurable retrieval weights and alternative ranking-fusion strategies.
+- Additional result filtering, pagination, and search analytics.
+- Improved API authentication, observability, and production deployment.
 
-## 19. Project Status
+## Project Status
 
-The current implementation is functional for local demonstration and academic evaluation. It includes preprocessing, hybrid indexing and search, RRF ranking, evaluation endpoints, automated tests, a browser interface, and Docker support.
-
-## 20. Authors
-
-This is a college academic project. Add the project author or team member names here for the final submission.
+The system supports local document indexing, hybrid retrieval using BM25, TF-IDF, and semantic search, RRF-based ranking, retrieval evaluation, a FastAPI backend, a browser-based interface, automated tests, and Docker-based execution.
